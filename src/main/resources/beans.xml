@@ -1,0 +1,18 @@
+<beans>
+
+    <bean id="mrZhangSan" class="com.eqshen.demo.People">
+        <property name="userName" value="张三"/>
+        <property name="age" value="25"/>
+    </bean>
+
+    <bean id="mrZhaoSi" class="com.eqshen.demo.People">
+        <property name="userName" value="尼古拉斯赵四"/>
+        <property name="age" value="25"/>
+    </bean>
+
+    <bean id="brotherCompany" class="com.eqshen.demo.BrotherCompany">
+        <property name="realBrother" ref="mrZhaoSi"/>
+        <property name="fakeBrother" ref="mrZhangSan"/>
+    </bean>
+
+</beans>
