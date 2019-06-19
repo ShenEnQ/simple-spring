@@ -12,15 +12,19 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Slf4j
 public class SpringContext {
 
-    private static Map<String,Object> beanContext = new HashMap<>();
+    /**
+     * first level cache
+     */
+    private  Map<String,Object> beanContext = new HashMap<>();
+
+    private  Map<String,Object> earlySingletonBeanMap = new HashMap<>();
+
+    private Map<String,BeanDefinition> beanDefinitions = new HashMap<String,BeanDefinition>();
 
 
     public SpringContext(String xmlConfigPath) {
@@ -31,8 +35,21 @@ public class SpringContext {
         }
     }
 
-    public  Object getBean(String id){
-        return beanContext.get(id);
+    public  Object getBean(String beanName){
+        return this.getBeanById(beanName);
+    }
+
+    private Object getSingleton(String beanName){
+        Object targetObject = beanContext.get(beanName);
+        if(targetObject == null && isSingletonInCreation(beanName)){
+            targetObject = this.earlySingletonBeanMap.get(beanName);
+        }
+        return targetObject;
+    }
+
+    private boolean isSingletonInCreation(String beanName){
+        BeanDefinition beanDefinition = beanDefinitions.get(beanName);
+        return beanDefinition != null && beanDefinition.isInCreation();
     }
 
     private void loadBeans(String filePath) throws Exception {
@@ -43,7 +60,7 @@ public class SpringContext {
         Element root = doc.getDocumentElement();
         NodeList nodes = root.getChildNodes();
 
-        List<BeanDefinition> beanDefinitions = new ArrayList<BeanDefinition>();
+
         Node node = null;
         for (int i = 0; i < nodes.getLength(); i++) {
             node = nodes.item(i);
@@ -51,39 +68,63 @@ public class SpringContext {
                continue;
             }
             Element element = (Element) node;
-            beanDefinitions.add(this.buildBeanDefinition(element));
+            BeanDefinition beanDefinition = this.buildBeanDefinition(element);
+            beanDefinitions.put(beanDefinition.getId(),beanDefinition);
         }
-        doLoadBean(beanDefinitions);
+        doLoadBean();
 
     }
 
-    private void doLoadBean(List<BeanDefinition> beanDefinitions){
+    private void createBeanByDefinition(BeanDefinition beanDefinition){
+        Class beanClass = null;
+        try {
+            beanClass = Class.forName(beanDefinition.getClazz());
+            Object bean = beanClass.newInstance();
+            this.earlySingletonBeanMap.put(beanDefinition.getId(),bean);
+            beanDefinition.setInCreation(true);
+        } catch (Exception e) {
+            log.error("create bean failed:{}",beanDefinition);
+        }
+
+    }
+
+    private void doLoadBean(){
         if(beanDefinitions == null) return;
+        for (Map.Entry<String, BeanDefinition> entry : beanDefinitions.entrySet()) {
+            this.createBeanByDefinition(entry.getValue());
+        }
 
-        for (BeanDefinition beanDefinition : beanDefinitions) {
-            try {
-                Class beanClass = Class.forName(beanDefinition.getClazz());
-                Object bean = beanClass.newInstance();
-                List<PropertyInfo> propertyInfos = beanDefinition.getProperties();
-                for (PropertyInfo propertyInfo: propertyInfos) {
-                    Field declaredField = bean.getClass().getDeclaredField(propertyInfo.getName());
-                    declaredField.setAccessible(true);
+        for (Map.Entry<String, BeanDefinition> entry : beanDefinitions.entrySet()) {
+            this.initBeanByDefinition(entry.getValue());
+        }
+    }
 
-                    if(propertyInfo.getType() == PropertyTypeEnum.value){
-                        Object value = this.typeConvert(declaredField.getType().getSimpleName(),propertyInfo.getValue());
-                        declaredField.set(bean,value);
-                    }else if(propertyInfo.getType() == PropertyTypeEnum.ref){
-                        declaredField.set(bean,this.getBeanById(propertyInfo.getRef()));
-                    }else{
-                        log.warn("Unknown property type {}",propertyInfo);
-                    }
-                }
-                //register
-                registerBean(beanDefinition.getId(),bean);
-
-            } catch (Exception e) {
-                log.error("Create bean error",e);
+    private void initBeanByDefinition(BeanDefinition beanDefinition){
+        try{
+            Object bean = this.earlySingletonBeanMap.get(beanDefinition.getId());
+            if(bean == null){
+                return;
             }
+            List<PropertyInfo> propertyInfos = beanDefinition.getProperties();
+            for (PropertyInfo propertyInfo: propertyInfos) {
+                Field declaredField = bean.getClass().getDeclaredField(propertyInfo.getName());
+                declaredField.setAccessible(true);
+
+                if(propertyInfo.getType() == PropertyTypeEnum.value){
+                    Object value = this.typeConvert(declaredField.getType().getSimpleName(),propertyInfo.getValue());
+                    declaredField.set(bean,value);
+                }else if(propertyInfo.getType() == PropertyTypeEnum.ref){
+                    Object refObj = this.getSingleton(propertyInfo.getRef());
+                    declaredField.set(bean,refObj);
+                }else{
+                    log.warn("Unknown property type {}",propertyInfo);
+                }
+            }
+            //register
+            beanDefinition.setInCreation(false);
+            registerBean(beanDefinition,bean);
+        }catch (Exception e){
+            log.error("Create bean failed {}",beanDefinition);
         }
     }
 
@@ -122,11 +163,15 @@ public class SpringContext {
     }
 
     private Object getBeanById(String id){
-        return beanContext.get(id);
+        return  this.getSingleton(id);
     }
 
-    private void registerBean(String id,Object object){
-        beanContext.put(id,object);
+    private void registerBean(BeanDefinition beanDefinition,Object object){
+        if(beanDefinition.isInCreation()){
+            this.earlySingletonBeanMap.put(beanDefinition.getId(),object);
+        }else{
+            beanContext.put(beanDefinition.getId(),object);
+        }
     }
 
     /**

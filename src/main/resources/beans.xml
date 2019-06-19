@@ -1,4 +1,8 @@
 <beans>
+    <bean id="brotherCompany" class="com.eqshen.demo.BrotherCompany">
+        <property name="realBrother" ref="mrZhaoSi"/>
+        <property name="fakeBrother" ref="mrZhangSan"/>
+    </bean>
 
     <bean id="mrZhangSan" class="com.eqshen.demo.People">
         <property name="userName" value="张三"/>
@@ -10,9 +14,19 @@
         <property name="age" value="25"/>
     </bean>
 
-    <bean id="brotherCompany" class="com.eqshen.demo.BrotherCompany">
-        <property name="realBrother" ref="mrZhaoSi"/>
-        <property name="fakeBrother" ref="mrZhangSan"/>
+    <!--循环引用-->
+    <bean id="peopleA" class="com.eqshen.demo.TriangleLove">
+        <property name="userName" value="peopleA"/>
+        <property name="personInHert" ref="peopleB"/>
     </bean>
 
+    <bean id="peopleB" class="com.eqshen.demo.TriangleLove">
+        <property name="userName" value="peopleB"/>
+        <property name="personInHert" ref="peopleC"/>
+    </bean>
+
+    <bean id="peopleC" class="com.eqshen.demo.TriangleLove">
+        <property name="userName" value="peopleC"/>
+        <property name="personInHert" ref="peopleA"/>
+    </bean>
 </beans>

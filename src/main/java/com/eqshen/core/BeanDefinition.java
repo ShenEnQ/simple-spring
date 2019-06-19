@@ -10,4 +10,5 @@ public class BeanDefinition {
     private String id;
     private String clazz;
     private List<PropertyInfo> properties;
+    private boolean inCreation;
 }
